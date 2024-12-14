@@ -2,37 +2,12 @@
 
 This is a simple load balancer works on application layer. It is designed to be used as a cli command
 
-## Steps to Create and Use the Tool
+### Usage
 
-### 1. Compile the Program
-
-First, build the program by running the following command:
+It is assumed that there are running backend servers on ports 8082, 8083, etc..
 
 ```bash
-cargo build --release
-```
-
-### 2. Move the executable to a directory in your PATH
-
-To make the tool accessible from anywhere in your terminal, move the compiled executables to a directory that is included in your system's PATH.
-
-```bash
-sudo cp target/release/load_balancer /usr/local/bin/
-```
-
-### 3. Verify the installation
-
-To verify the installation, check if the executable is accessible from anywhere in your terminal:
-
-```bash
-which load_balancer
-```
-
-
-### 4. Usage
-
-```bash
-load_balancer
+cargo run
 ```
 
 ## License
