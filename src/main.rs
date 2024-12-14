@@ -2,8 +2,10 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 const LOAD_BALANCER_ADDR_PORT: &str = "127.0.0.1:8081";
-const BACKEND_SERVER_ADDR_PORT: &str = "127.0.0.1:8082";
-fn handle_client(mut client_stream: TcpStream) {
+const BACKEND_SERVER_ADDR_PORT_8082: &str = "127.0.0.1:8082";
+const BACKEND_SERVER_ADDR_PORT_8083: &str = "127.0.0.1:8083";
+const BACKEND_SERVER_ADDR_PORT_8084: &str = "127.0.0.1:8084";
+fn handle_client(mut client_stream: TcpStream, backend_addr: &str) {
     let mut buffer = [0;1024];
 
     client_stream.read(&mut buffer).expect("Failed to read from client stream");
@@ -11,7 +13,7 @@ fn handle_client(mut client_stream: TcpStream) {
     println!("Received request from client:\n{}", request);
 
     // Forward the request to the backend server
-    match TcpStream::connect(BACKEND_SERVER_ADDR_PORT) {
+    match TcpStream::connect(backend_addr) {
         Ok(mut backend_stream) => {
             // Write the client request to the backend server
             backend_stream.write_all(&buffer).expect("Failed to write to backend server");
@@ -42,10 +44,20 @@ fn main() {
         .expect("Failed to bind to address");
     println!("Server listening on {}", LOAD_BALANCER_ADDR_PORT);
 
+    let backend_addresses = [
+        BACKEND_SERVER_ADDR_PORT_8082,
+        BACKEND_SERVER_ADDR_PORT_8083,
+        BACKEND_SERVER_ADDR_PORT_8084
+    ];
+
+    let mut balance_index = 0;
+
     for stream in listener.incoming() {
+        let backend_addr = backend_addresses[balance_index];
         match stream {
             Ok(stream) => {
-                std::thread::spawn(move || handle_client(stream));
+                std::thread::spawn(move || handle_client(stream, backend_addr));
+                balance_index = (balance_index + 1) % backend_addresses.len();
             }
             Err(e) => {
                 eprintln!("Failed to establish connection: {}", e);
