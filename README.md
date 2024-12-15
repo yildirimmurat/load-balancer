@@ -9,6 +9,9 @@ It is assumed that there are running backend servers on ports 8082, 8083, etc..
 ```bash
 cargo run
 ```
+````bash
+curl localhost:8081
+````
 
 ## License
 
