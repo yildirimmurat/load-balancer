@@ -7,26 +7,34 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct LoadBalancer {
     pub backend_addresses: Arc<Mutex<Vec<String>>>,
+    pub healthy_backend_addresses: Arc<Mutex<Vec<String>>>,
     pub health_check_interval: Duration,
+    pub current_index: Arc<Mutex<usize>>,
 }
 
 impl LoadBalancer {
-    pub fn new(backend_addresses: Vec<String>, health_check_interval: u64) -> Self {
+    pub fn new(
+        backend_addresses: Vec<String>,
+        health_check_interval: u64,
+    ) -> Self {
         LoadBalancer {
             backend_addresses: Arc::new(Mutex::new(backend_addresses)),
+            healthy_backend_addresses: Arc::new(Mutex::new(vec![])),
             health_check_interval: Duration::from_secs(health_check_interval),
+            current_index: Arc::new(Mutex::new(0)),
         }
     }
 
     pub fn start_health_check(&self) {
         let backend_addresses = self.backend_addresses.clone();
+        let healthy_backend_addresses = self.healthy_backend_addresses.clone();
         let health_check_interval = self.health_check_interval;
 
         thread::spawn(move || loop {
             thread::sleep(health_check_interval);
 
             let mut healthy_servers = Vec::new();
-            let mut backend_addresses = backend_addresses.lock().unwrap();
+            let backend_addresses = backend_addresses.lock().unwrap();
 
             for backend in backend_addresses.iter() {
                 match Self::check_health(backend) {
@@ -36,8 +44,8 @@ impl LoadBalancer {
             }
 
             // Update the backend list with only healthy servers
-            *backend_addresses = healthy_servers;
-            println!("Healthy backend servers: {:?}", backend_addresses);
+            *healthy_backend_addresses.lock().unwrap() = healthy_servers.clone();
+            println!("Healthy backend servers: {:?}", healthy_servers);
         });
     }
 
@@ -80,12 +88,17 @@ impl LoadBalancer {
 
     // Get a round-robin backend address
     pub fn get_backend(&self) -> Option<String> {
-        let backend_addresses = self.backend_addresses.lock().unwrap();
-        if backend_addresses.is_empty() {
+        let healthy_backend_addresses = self.healthy_backend_addresses.lock().unwrap();
+        if healthy_backend_addresses.is_empty() {
             return None;
         }
 
-        // Simple round-robin logic, always return the first healthy backend
-        Some(backend_addresses[0].clone())
+        let mut current_index = self.current_index.lock().unwrap();
+
+        let backend = healthy_backend_addresses[*current_index].clone();
+
+        *current_index = (*current_index + 1) % healthy_backend_addresses.len();
+
+        Some(backend)
     }
 }
