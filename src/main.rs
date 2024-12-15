@@ -53,6 +53,11 @@ fn main() {
     } else {
         10
     };
+    let health_check_url = if args.len() > 2 {
+        args[2].clone()
+    } else {
+        "/health".to_string()
+    };
 
     let backend_addresses = vec![
         BACKEND_SERVER_ADDR_PORT_8082.to_string(),
@@ -63,6 +68,7 @@ fn main() {
     let load_balancer = LoadBalancer::new(
         backend_addresses,
         health_check_interval,
+        health_check_url,
     );
     load_balancer.start_health_check();
 
