@@ -1,10 +1,15 @@
+mod load_balancer;
+
+use std::env;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
+use load_balancer::LoadBalancer;
 const LOAD_BALANCER_ADDR_PORT: &str = "127.0.0.1:8081";
 const BACKEND_SERVER_ADDR_PORT_8082: &str = "127.0.0.1:8082";
 const BACKEND_SERVER_ADDR_PORT_8083: &str = "127.0.0.1:8083";
 const BACKEND_SERVER_ADDR_PORT_8084: &str = "127.0.0.1:8084";
+
 fn handle_client(mut client_stream: TcpStream, backend_addr: &str) {
     let mut buffer = [0;1024];
 
@@ -22,6 +27,7 @@ fn handle_client(mut client_stream: TcpStream, backend_addr: &str) {
             let mut backend_response = Vec::new();
             backend_stream.read_to_end(&mut backend_response).expect("Failed to read from the backend server");
 
+            // @todo: should be a part of backends response
             // Prepare HTTP headers
             let response_header = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
             client_stream.write_all(response_header).expect("Failed to write response headers to client stream");
@@ -40,27 +46,45 @@ fn handle_client(mut client_stream: TcpStream, backend_addr: &str) {
 }
 
 fn main() {
+    // Parse command line arguments
+    let args: Vec<String> = env::args().collect();
+    let health_check_interval = if args.len() > 1 {
+        args[1].parse::<u64>().unwrap_or(10)
+    } else {
+        10
+    };
+
+    let backend_addresses = vec![
+        BACKEND_SERVER_ADDR_PORT_8082.to_string(),
+        BACKEND_SERVER_ADDR_PORT_8083.to_string(),
+        BACKEND_SERVER_ADDR_PORT_8084.to_string(),
+    ];
+
+    let load_balancer = LoadBalancer::new(
+        backend_addresses,
+        health_check_interval,
+    );
+    load_balancer.start_health_check();
+
     let listener = TcpListener::bind(LOAD_BALANCER_ADDR_PORT)
         .expect("Failed to bind to address");
     println!("Server listening on {}", LOAD_BALANCER_ADDR_PORT);
 
-    let backend_addresses = [
-        BACKEND_SERVER_ADDR_PORT_8082,
-        BACKEND_SERVER_ADDR_PORT_8083,
-        BACKEND_SERVER_ADDR_PORT_8084
-    ];
-
-    let mut balance_index = 0;
-
+    // Handle incoming client requests
     for stream in listener.incoming() {
-        let backend_addr = backend_addresses[balance_index];
-        match stream {
-            Ok(stream) => {
-                std::thread::spawn(move || handle_client(stream, backend_addr));
-                balance_index = (balance_index + 1) % backend_addresses.len();
-            }
-            Err(e) => {
-                eprintln!("Failed to establish connection: {}", e);
+        let backend_addr = load_balancer.get_backend().unwrap_or_else(|| {
+            eprintln!("No healthy backend servers available");
+            String::new()
+        });
+
+        if !backend_addr.is_empty() {
+            match stream {
+                Ok(stream) => {
+                    std::thread::spawn(move || handle_client(stream, &backend_addr));
+                }
+                Err(e) => {
+                    eprintln!("Failed to establish connection: {}", e);
+                }
             }
         }
     }
